@@ -1,0 +1,461 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>学术期刊推送</title>
+    <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
+    <link href="styles.css" rel="stylesheet">
+    <style>
+        .abstract {
+            display: -webkit-box;
+            -webkit-line-clamp: 3;
+            -webkit-box-orient: vertical;
+            overflow: hidden;
+        }
+        .paper-card {
+            transition: all 0.3s ease;
+        }
+        .paper-card:hover {
+            transform: translateY(-5px);
+        }
+    </style>
+</head>
+<body class="bg-gray-50">
+    <!-- 导航栏 -->
+    <nav class="bg-white shadow-lg">
+        <div class="max-w-6xl mx-auto px-4">
+            <div class="flex justify-between items-center h-16">
+                <div class="flex items-center">
+                    <h1 class="text-xl font-bold text-blue-600">学术期刊推送</h1>
+                </div>
+                <div class="flex items-center space-x-4">
+                    <button class="text-gray-600 hover:text-blue-600">
+                        <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9"></path>
+                        </svg>
+                    </button>
+                    <div class="relative user-menu">
+                        <button id="userMenuBtn" class="flex items-center space-x-2 text-gray-600 hover:text-blue-600">
+                            <span id="username">用户名</span>
+                        </button>
+                        <div id="userDropdown" class="absolute right-0 mt-2 w-48 bg-white rounded-md shadow-lg hidden">
+                            <a href="#" id="logoutBtn" class="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-100">退出登录</a>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </nav>
+
+    <!-- 主要内容区 -->
+    <main class="max-w-6xl mx-auto px-4 py-8">
+        <!-- 筛选器 -->
+        <div class="mb-8 bg-white rounded-lg shadow p-4">
+            <div class="flex flex-wrap items-center gap-4">
+                <span class="text-gray-700">筛选：</span>
+                <div class="flex flex-wrap gap-2" id="fieldFilters">
+                    <button data-field="all" class="px-4 py-2 rounded-full bg-blue-100 text-blue-800">全部</button>
+                    <!-- 领域筛选按钮将通过JavaScript动态加载 -->
+                </div>
+            </div>
+            <div class="mt-4 flex flex-wrap items-center gap-4">
+                <span class="text-gray-700">时间范围：</span>
+                <select id="timeRange" class="px-4 py-2 border rounded-lg">
+                    <option value="7">最近一周</option>
+                    <option value="30" selected>最近一个月</option>
+                    <option value="90">最近三个月</option>
+                    <option value="180">最近半年</option>
+                </select>
+                
+                <div class="ml-auto">
+                    <button id="favoritesBtn" class="px-4 py-2 rounded-lg border border-blue-500 text-blue-500 hover:bg-blue-50 flex items-center">
+                        <svg class="w-5 h-5 mr-1" fill="currentColor" viewBox="0 0 20 20">
+                            <path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 00.95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.8 2.034a1 1 0 00-.364 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.8-2.034a1 1 0 00-1.175 0l-2.8 2.034c-.784.57-1.838-.197-1.539-1.118l1.07-3.292a1 1 0 00-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81h3.461a1 1 0 00.951-.69l1.07-3.292z"></path>
+                        </svg>
+                        我的收藏
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <!-- 论文卡片列表 -->
+        <div id="papersContainer" class="grid gap-6 md:grid-cols-2">
+            <!-- 论文卡片将通过JavaScript动态加载 -->
+            <div class="paper-card bg-white rounded-lg shadow-md hover:shadow-xl transition-shadow duration-300">
+                <div class="p-6">
+                    <div class="flex justify-between items-start mb-4">
+                        <h3 class="text-xl font-semibold text-gray-900 hover:text-blue-600">
+                            加载中...
+                        </h3>
+                    </div>
+                    <p class="text-gray-600 text-sm mb-4">作者：加载中...</p>
+                    <p class="text-gray-700 mb-4">
+                        正在加载文章数据，请稍候...
+                    </p>
+                </div>
+            </div>
+        </div>
+        
+        <!-- 无结果提示 -->
+        <div id="noResults" class="hidden text-center py-10">
+            <svg class="w-16 h-16 mx-auto text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9.172 16.172a4 4 0 015.656 0M9 10h.01M15 10h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+            </svg>
+            <p class="text-gray-500 text-xl mt-4">没有找到相关文章</p>
+            <p class="text-gray-400 mt-2">请尝试更改筛选条件或时间范围</p>
+        </div>
+    </main>
+
+    <script>
+        // 全局变量
+        let currentUser = null;
+        let allPapers = [];
+        let userFields = [];
+        let currentField = 'all';
+        let currentTimeRange = 30;
+        let showingFavorites = false;
+
+        // 切换用户菜单
+        document.getElementById('userMenuBtn').addEventListener('click', () => {
+            document.getElementById('userDropdown').classList.toggle('hidden');
+        });
+
+        // 点击页面其他地方关闭下拉菜单
+        document.addEventListener('click', (e) => {
+            if (!e.target.closest('.user-menu')) {
+                document.getElementById('userDropdown').classList.add('hidden');
+            }
+        });
+
+        // 检查登录状态
+        async function checkAuth() {
+            try {
+                const response = await fetch('/api/user');
+                if (!response.ok) {
+                    window.location.href = '/login.html';
+                    return;
+                }
+                
+                currentUser = await response.json();
+                document.getElementById('username').textContent = currentUser.email || currentUser.phone || '用户';
+                userFields = currentUser.fields;
+                
+                // 加载领域筛选器
+                loadFieldFilters();
+                
+                // 加载文章
+                loadPapers();
+            } catch (error) {
+                console.error('认证检查失败:', error);
+                window.location.href = '/login.html';
+            }
+        }
+
+        // 加载领域筛选器
+        async function loadFieldFilters() {
+            try {
+                const response = await fetch('/api/fields');
+                const fields = await response.json();
+                
+                const container = document.getElementById('fieldFilters');
+                
+                // 保留"全部"按钮
+                const allButton = container.querySelector('[data-field="all"]');
+                container.innerHTML = '';
+                container.appendChild(allButton);
+                
+                // 添加用户的领域
+                userFields.forEach(field => {
+                    const button = document.createElement('button');
+                    button.className = 'px-4 py-2 rounded-full text-gray-600 hover:bg-gray-100';
+                    button.textContent = field;
+                    button.dataset.field = field;
+                    button.addEventListener('click', () => {
+                        showingFavorites = false;
+                        updateFavoritesButtonStyle();
+                        filterPapers(field);
+                    });
+                    container.appendChild(button);
+                });
+                
+                // 添加其他领域
+                fields.filter(field => !userFields.includes(field)).forEach(field => {
+                    const button = document.createElement('button');
+                    button.className = 'px-4 py-2 rounded-full text-gray-600 hover:bg-gray-100';
+                    button.textContent = field;
+                    button.dataset.field = field;
+                    button.addEventListener('click', () => {
+                        showingFavorites = false;
+                        updateFavoritesButtonStyle();
+                        filterPapers(field);
+                    });
+                    container.appendChild(button);
+                });
+            } catch (error) {
+                console.error('加载领域失败:', error);
+            }
+        }
+
+        // 加载论文数据
+        async function loadPapers() {
+            try {
+                // 显示加载状态
+                document.getElementById('papersContainer').innerHTML = `
+                    <div class="paper-card bg-white rounded-lg shadow-md">
+                        <div class="p-6">
+                            <div class="animate-pulse">
+                                <div class="h-6 bg-gray-200 rounded w-3/4 mb-4"></div>
+                                <div class="h-4 bg-gray-200 rounded w-1/2 mb-4"></div>
+                                <div class="h-4 bg-gray-200 rounded w-full mb-2"></div>
+                                <div class="h-4 bg-gray-200 rounded w-full mb-2"></div>
+                                <div class="h-4 bg-gray-200 rounded w-3/4"></div>
+                            </div>
+                        </div>
+                    </div>
+                `.repeat(4);
+                
+                const response = await fetch(`/api/papers?days=${currentTimeRange}`);
+                if (!response.ok) {
+                    throw new Error('获取文章失败');
+                }
+                
+                allPapers = await response.json();
+                filterPapers(currentField);
+            } catch (error) {
+                console.error('加载文章失败:', error);
+                document.getElementById('papersContainer').innerHTML = `
+                    <div class="col-span-2 text-center py-10">
+                        <p class="text-red-500">加载文章失败，请刷新页面重试</p>
+                    </div>
+                `;
+            }
+        }
+
+        // 加载收藏的论文
+        async function loadFavorites() {
+            try {
+                // 显示加载状态
+                document.getElementById('papersContainer').innerHTML = `
+                    <div class="paper-card bg-white rounded-lg shadow-md">
+                        <div class="p-6">
+                            <div class="animate-pulse">
+                                <div class="h-6 bg-gray-200 rounded w-3/4 mb-4"></div>
+                                <div class="h-4 bg-gray-200 rounded w-1/2 mb-4"></div>
+                                <div class="h-4 bg-gray-200 rounded w-full mb-2"></div>
+                                <div class="h-4 bg-gray-200 rounded w-full mb-2"></div>
+                                <div class="h-4 bg-gray-200 rounded w-3/4"></div>
+                            </div>
+                        </div>
+                    </div>
+                `.repeat(4);
+                
+                const response = await fetch('/api/favorites');
+                if (!response.ok) {
+                    throw new Error('获取收藏失败');
+                }
+                
+                const favorites = await response.json();
+                displayPapers(favorites);
+            } catch (error) {
+                console.error('加载收藏失败:', error);
+                document.getElementById('papersContainer').innerHTML = `
+                    <div class="col-span-2 text-center py-10">
+                        <p class="text-red-500">加载收藏失败，请刷新页面重试</p>
+                    </div>
+                `;
+            }
+        }
+
+        // 筛选论文
+        function filterPapers(field) {
+            currentField = field;
+            
+            // 更新筛选按钮状态
+            document.querySelectorAll('#fieldFilters button').forEach(btn => {
+                if (btn.dataset.field === field) {
+                    btn.classList.remove('text-gray-600', 'hover:bg-gray-100');
+                    btn.classList.add('bg-blue-100', 'text-blue-800');
+                } else {
+                    btn.classList.remove('bg-blue-100', 'text-blue-800');
+                    btn.classList.add('text-gray-600', 'hover:bg-gray-100');
+                }
+            });
+            
+            // 筛选文章
+            let filteredPapers = allPapers;
+            if (field !== 'all') {
+                filteredPapers = allPapers.filter(paper => 
+                    paper.fields.includes(field)
+                );
+            }
+            
+            displayPapers(filteredPapers);
+        }
+
+        // 显示论文
+        function displayPapers(papers) {
+            // 显示结果
+            if (papers.length === 0) {
+                document.getElementById('papersContainer').classList.add('hidden');
+                document.getElementById('noResults').classList.remove('hidden');
+            } else {
+                document.getElementById('papersContainer').classList.remove('hidden');
+                document.getElementById('noResults').classList.add('hidden');
+                
+                document.getElementById('papersContainer').innerHTML = papers.map(paper => `
+                    <div class="paper-card bg-white rounded-lg shadow-md hover:shadow-xl transition-shadow duration-300">
+                        <div class="p-6">
+                            <div class="flex justify-between items-start mb-4">
+                                <h3 class="text-xl font-semibold text-gray-900 hover:text-blue-600">
+                                    <a href="${paper.link}" target="_blank" rel="noopener noreferrer">
+                                        ${paper.title}
+                                    </a>
+                                </h3>
+                                <button class="text-gray-400 hover:text-blue-600 save-paper ${paper.favorite ? 'text-blue-500' : ''}" data-id="${paper.id}" onclick="toggleFavorite(${paper.id}, this)">
+                                    <svg class="w-6 h-6" fill="${paper.favorite ? 'currentColor' : 'none'}" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 5a2 2 0 012-2h10a2 2 0 012 2v16l-7-3.5L5 21V5z"></path>
+                                    </svg>
+                                </button>
+                            </div>
+                            <p class="text-gray-600 text-sm mb-4">作者：${paper.authors.join(', ')}</p>
+                            <p class="text-gray-700 mb-4">${paper.abstract || paper.summary || '无摘要'}</p>
+                            <div class="flex flex-wrap justify-between items-center">
+                                <div class="flex flex-wrap gap-2 mb-2">
+                                    ${paper.fields.map(field => `
+                                        <span class="inline-block bg-blue-100 text-blue-800 text-xs px-3 py-1 rounded-full">
+                                            ${field}
+                                        </span>
+                                    `).join('')}
+                                </div>
+                                <div class="flex items-center">
+                                    <span class="text-gray-500 text-sm">
+                                        ${paper.journal} · ${new Date(paper.publishDate).toLocaleDateString()}
+                                    </span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                `).join('');
+            }
+        }
+
+        // 切换收藏状态
+        async function toggleFavorite(articleId, button) {
+            try {
+                const isFavorited = button.classList.contains('text-blue-500');
+                
+                if (isFavorited) {
+                    // 取消收藏
+                    const response = await fetch(`/api/favorites?article_id=${articleId}`, {
+                        method: 'DELETE'
+                    });
+                    
+                    if (response.ok) {
+                        button.classList.remove('text-blue-500');
+                        button.querySelector('svg').setAttribute('fill', 'none');
+                        
+                        // 如果在收藏页面，需要移除该卡片
+                        if (showingFavorites) {
+                            // 重新加载收藏列表
+                            loadFavorites();
+                        } else {
+                            // 更新本地数据
+                            const paper = allPapers.find(p => p.id === articleId);
+                            if (paper) {
+                                paper.favorite = false;
+                            }
+                        }
+                    }
+                } else {
+                    // 添加收藏
+                    const response = await fetch('/api/favorites', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json'
+                        },
+                        body: JSON.stringify({ article_id: articleId })
+                    });
+                    
+                    if (response.ok) {
+                        button.classList.add('text-blue-500');
+                        button.querySelector('svg').setAttribute('fill', 'currentColor');
+                        
+                        // 更新本地数据
+                        const paper = allPapers.find(p => p.id === articleId);
+                        if (paper) {
+                            paper.favorite = true;
+                        }
+                    }
+                }
+            } catch (error) {
+                console.error('切换收藏状态失败:', error);
+                alert('操作失败，请重试');
+            }
+        }
+
+        // 更新收藏按钮样式
+        function updateFavoritesButtonStyle() {
+            const favBtn = document.getElementById('favoritesBtn');
+            if (showingFavorites) {
+                favBtn.classList.remove('border-blue-500', 'text-blue-500', 'hover:bg-blue-50');
+                favBtn.classList.add('bg-blue-500', 'text-white', 'hover:bg-blue-600');
+            } else {
+                favBtn.classList.remove('bg-blue-500', 'text-white', 'hover:bg-blue-600');
+                favBtn.classList.add('border-blue-500', 'text-blue-500', 'hover:bg-blue-50');
+            }
+        }
+
+        // 时间范围变化
+        document.getElementById('timeRange').addEventListener('change', (e) => {
+            if (showingFavorites) return; // 在收藏页面不重新加载
+            
+            currentTimeRange = parseInt(e.target.value);
+            loadPapers();
+        });
+
+        // 收藏按钮点击
+        document.getElementById('favoritesBtn').addEventListener('click', () => {
+            showingFavorites = !showingFavorites;
+            updateFavoritesButtonStyle();
+            
+            if (showingFavorites) {
+                // 取消所有领域筛选按钮的选中状态
+                document.querySelectorAll('#fieldFilters button').forEach(btn => {
+                    btn.classList.remove('bg-blue-100', 'text-blue-800');
+                    btn.classList.add('text-gray-600', 'hover:bg-gray-100');
+                });
+                
+                // 加载收藏
+                loadFavorites();
+            } else {
+                // 恢复当前领域的选中状态
+                document.querySelector(`[data-field="${currentField}"]`).click();
+            }
+        });
+
+        // 退出登录
+        document.getElementById('logoutBtn').addEventListener('click', async (e) => {
+            e.preventDefault();
+            try {
+                await fetch('/api/logout', { method: 'POST' });
+                window.location.href = '/login.html';
+            } catch (error) {
+                console.error('退出失败:', error);
+            }
+        });
+
+        // 页面加载时执行
+        document.addEventListener('DOMContentLoaded', () => {
+            checkAuth();
+            
+            // 为"全部"按钮添加点击事件
+            document.querySelector('[data-field="all"]').addEventListener('click', () => {
+                showingFavorites = false;
+                updateFavoritesButtonStyle();
+                filterPapers('all');
+            });
+        });
+    </script>
+</body>
+</html> 
