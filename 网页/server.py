@@ -12,6 +12,19 @@ import uuid
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from config import init_database
 
+# 导入逻辑关系图模块
+try:
+    sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+    from generate_logic_graph import (
+        process_article_logic_graph, 
+        get_article_logic_graph, 
+        ensure_logic_graph_table_exists
+    )
+    LOGIC_GRAPH_ENABLED = True
+except ImportError:
+    print("⚠️ 逻辑关系图模块导入失败，相关API将不可用")
+    LOGIC_GRAPH_ENABLED = False
+
 app = Flask(__name__, static_folder='public')
 app.secret_key = secrets.token_hex(16)  # 生成随机密钥用于session
 
@@ -223,7 +236,8 @@ def get_papers():
         query = '''
         SELECT a.id, a.journal, a.original_title, a.translated_title, 
                a.original_authors, a.translated_authors, a.abstract, 
-               a.summary, a.link, a.publish_date, GROUP_CONCAT(af.field, ', ') as fields
+               a.summary, a.link, a.publish_date, GROUP_CONCAT(af.field, ', ') as fields,
+               (SELECT 1 FROM article_logic_graphs alg WHERE alg.article_id = a.id) as has_logic_graph
         FROM articles a
         LEFT JOIN article_fields af ON a.id = af.article_id
         '''
@@ -272,7 +286,8 @@ def get_papers():
                 'link': row['link'],
                 'publishDate': row['publish_date'],
                 'fields': row['fields'].split(', ') if row['fields'] else [],
-                'favorite': row['id'] in favorited_ids
+                'favorite': row['id'] in favorited_ids,
+                'hasLogicGraph': bool(row['has_logic_graph']) if 'has_logic_graph' in row.keys() else False
             }
             papers.append(paper)
         
@@ -487,6 +502,84 @@ def check_favorites():
     finally:
         if 'conn' in locals():
             conn.close()
+
+# 获取文章逻辑关系图API
+@app.route('/api/paper/logic-graph/<int:article_id>', methods=['GET'])
+def get_logic_graph(article_id):
+    # 检查用户是否登录
+    if 'user_id' not in session:
+        return jsonify({'error': '请先登录'}), 401
+    
+    if not LOGIC_GRAPH_ENABLED:
+        return jsonify({'error': '逻辑关系图功能未启用'}), 503
+    
+    try:
+        # 检查文章是否存在
+        conn = sqlite3.connect(DB_PATH)
+        cursor = conn.cursor()
+        cursor.execute("SELECT 1 FROM articles WHERE id = ?", (article_id,))
+        if not cursor.fetchone():
+            conn.close()
+            return jsonify({'error': '文章不存在'}), 404
+        
+        # 查询逻辑关系图
+        cursor.execute("""
+            SELECT alg.mermaid_code, alg.verification
+            FROM article_logic_graphs alg
+            WHERE alg.article_id = ?
+        """, (article_id,))
+        
+        result = cursor.fetchone()
+        conn.close()
+        
+        if result:
+            mermaid_code, verification = result
+            return jsonify({
+                'article_id': article_id,
+                'mermaid_code': mermaid_code,
+                'verification': verification
+            })
+        else:
+            return jsonify({'error': '该文章暂无逻辑关系图'}), 404
+            
+    except Exception as e:
+        return jsonify({'error': f'获取逻辑关系图失败: {str(e)}'}), 500
+
+# 按需生成文章逻辑关系图API
+@app.route('/api/paper/generate-logic-graph/<int:article_id>', methods=['POST'])
+def generate_logic_graph(article_id):
+    # 检查用户是否登录
+    if 'user_id' not in session:
+        return jsonify({'error': '请先登录'}), 401
+    
+    if not LOGIC_GRAPH_ENABLED:
+        return jsonify({'error': '逻辑关系图功能未启用'}), 503
+    
+    try:
+        # 检查文章是否存在
+        conn = sqlite3.connect(DB_PATH)
+        cursor = conn.cursor()
+        cursor.execute("SELECT 1 FROM articles WHERE id = ?", (article_id,))
+        if not cursor.fetchone():
+            conn.close()
+            return jsonify({'error': '文章不存在'}), 404
+        conn.close()
+        
+        # 生成逻辑关系图（这会自动存到数据库中）
+        result = process_article_logic_graph(article_id)
+        
+        if result:
+            return jsonify({
+                'article_id': article_id,
+                'mermaid_code': result['mermaid_code'],
+                'verification': result['verification'],
+                'success': True
+            })
+        else:
+            return jsonify({'error': '生成逻辑关系图失败'}), 500
+            
+    except Exception as e:
+        return jsonify({'error': f'生成逻辑关系图失败: {str(e)}'}), 500
 
 if __name__ == '__main__':
     ensure_db_exists()

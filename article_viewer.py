@@ -1,6 +1,6 @@
 import tkinter as tk
 from tkinter import ttk, messagebox
-import sqlite3
+from config import get_db_connection  # 更新为使用MySQL连接
 from datetime import datetime
 
 class ArticleViewer:
@@ -85,7 +85,7 @@ class ArticleViewer:
         for item in self.tree.get_children():
             self.tree.delete(item)
             
-        conn = sqlite3.connect('journals.db')
+        conn = get_db_connection()  # 使用MySQL连接
         cursor = conn.cursor()
         
         try:
@@ -96,14 +96,14 @@ class ArticleViewer:
                 
             params = ()
             if search_term:
-                query += " WHERE original_title LIKE ? OR translated_title LIKE ?"
+                query += " WHERE original_title LIKE %s OR translated_title LIKE %s"
                 params = (f'%{search_term}%', f'%{search_term}%')
                 
             cursor.execute(query, params)
             
             for row in cursor.fetchall():
                 # 获取领域信息
-                cursor.execute("SELECT field FROM article_fields WHERE article_id=?", (row[0],))
+                cursor.execute("SELECT field FROM article_fields WHERE article_id=%s", (row[0],))
                 fields = [field[0] for field in cursor.fetchall()]
                 fields_str = ', '.join(fields) if fields else '无'
                 
@@ -131,13 +131,13 @@ class ArticleViewer:
         if not confirm:
             return
             
-        conn = sqlite3.connect('journals.db')
+        conn = get_db_connection()  # 使用MySQL连接
         cursor = conn.cursor()
         
         try:
             for item in selected:
                 article_id = self.tree.item(item, 'values')[0]
-                cursor.execute("DELETE FROM articles WHERE id=?", (article_id,))
+                cursor.execute("DELETE FROM articles WHERE id=%s", (article_id,))
             conn.commit()
             self.load_data()
             messagebox.showinfo("成功", f"已删除 {len(selected)} 条记录")
@@ -156,15 +156,15 @@ class ArticleViewer:
         item = self.tree.item(selected[0])
         article_id = item['values'][0]
         
-        conn = sqlite3.connect('journals.db')
+        conn = get_db_connection()  # 使用MySQL连接
         cursor = conn.cursor()
         
         try:
-            cursor.execute('''SELECT * FROM articles WHERE id=?''', (article_id,))
+            cursor.execute('''SELECT * FROM articles WHERE id=%s''', (article_id,))
             article = cursor.fetchone()
             
             # 获取领域信息
-            cursor.execute('''SELECT field FROM article_fields WHERE article_id=?''', (article_id,))
+            cursor.execute('''SELECT field FROM article_fields WHERE article_id=%s''', (article_id,))
             fields = [field[0] for field in cursor.fetchall()]
             fields_str = ', '.join(fields) if fields else '无'
             
@@ -205,7 +205,7 @@ class ArticleViewer:
                     '原始作者', '翻译作者'
                 ])
                 
-                conn = sqlite3.connect('journals.db')
+                conn = get_db_connection()  # 使用MySQL连接
                 cursor = conn.cursor()
                 cursor.execute('''SELECT 
                     id, journal, original_title, translated_title,

@@ -4,9 +4,8 @@ import argparse
 import csv
 import os
 from typing import Dict, List
-import sqlite3
-import re
-from config import FIELD_KEYWORDS, init_database
+import mysql.connector  # 更新为使用MySQL
+from config import FIELD_KEYWORDS, get_db_connection  # 更新为使用MySQL连接
 import uuid
 
 # 数据库文件
@@ -14,7 +13,7 @@ DB_FILE = "journals.db"
 
 def load_subscriptions() -> List[Dict]:
     """加载所有订阅信息（新版）"""
-    conn = sqlite3.connect(DB_FILE)
+    conn = get_db_connection()  # 使用MySQL连接
     cursor = conn.cursor()
     cursor.execute('SELECT user_id, email, phone, field, password FROM subscriptions')
     subscriptions = []
@@ -26,25 +25,27 @@ def load_subscriptions() -> List[Dict]:
             'field': row[3],
             'password': row[4]
         })
+    cursor.close()
     conn.close()
     return subscriptions
 
 def add_subscription(email: str, phone: str, field: str) -> str:
     """新版添加订阅，返回生成的用户ID"""
     user_id = str(uuid.uuid4())  # 生成唯一UUID
-    conn = sqlite3.connect(DB_FILE)
+    conn = get_db_connection()  # 使用MySQL连接
     try:
         cursor = conn.cursor()
         cursor.execute('''
             INSERT INTO subscriptions (user_id, email, phone, field, password)
-            VALUES (?, ?, ?, ?, ?)
+            VALUES (%s, %s, %s, %s, %s)
         ''', (user_id, email, phone, field, ''))
         conn.commit()
         return user_id
-    except sqlite3.IntegrityError as e:
+    except mysql.connector.IntegrityError as e:
         print(f"添加失败: {str(e)}")
         return None
     finally:
+        cursor.close()
         conn.close()
 
 def update_subscription(user_id: str, email: str, phone: str, new_field: str) -> bool:
@@ -234,9 +235,9 @@ class SubscriptionManager:
             
         user_id = self.tree.item(selection[0])['values'][0]
         if messagebox.askyesno("确认", f"确定要删除用户 {user_id} 的订阅吗？"):
-            conn = sqlite3.connect(DB_FILE)
+            conn = get_db_connection()  # 使用MySQL连接
             cursor = conn.cursor()
-            cursor.execute('DELETE FROM subscriptions WHERE user_id=?', (user_id,))
+            cursor.execute('DELETE FROM subscriptions WHERE user_id=%s', (user_id,))
             conn.commit()
             conn.close()
             
@@ -300,8 +301,7 @@ def main_cli():
         parser.print_help()
 
 if __name__ == "__main__":
-    if not os.path.exists('journals.db'):
-        init_database()  # 确保数据库和表存在
+
     import sys
     if len(sys.argv) > 1:
         main_cli()

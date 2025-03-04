@@ -17,13 +17,14 @@ import feedparser
 
 from datetime import datetime, timedelta
 
-import sqlite3
-from config import FIELD_KEYWORDS, JOURNALS_CONFIG, init_database
+from config import FIELD_KEYWORDS, JOURNALS_CONFIG, get_db_connection, init_database
+from mysql.connector import Error
+
 
 # 配置信息
 CLIENT = OpenAI(
-    api_key="sk-mdOUhbhns3A8LgdlmFX6DNHeUGW0zSBJHsQooum7SQH5iTRE",
-    base_url="https://api.moonshot.cn/v1",
+    api_key="sk-dc79c7928859459c9619daf752c542fc",  # 请替换为你的实际API密钥
+    base_url="https://dashscope.aliyuncs.com/compatible-mode/v1",
 )
 
 def identify_journal_from_link(link):
@@ -65,17 +66,13 @@ def get_detailed_abstract(entry):
         'link': getattr(entry, 'link', '无链接'),
         'publish_date': parse_entry_date(entry).strftime('%Y-%m-%d')
     }
-    # search 工具的具体实现，这里我们只需要返回参数即可
-    def search_impl(arguments: Dict[str, Any]) -> Any:
-    
-        return arguments
 
     try:
         # 增强版系统提示
         system_prompt = """作为学术助手，请完成：
 1. 网络搜索获取用户提到的论文摘要（250字以内，中文）
 2. 翻译标题和作者信息
-3. 结构化返回：
+3. json结构化返回：
 {
   "original_title": "保留原始标题",
   "translated_title": "中文标题",
@@ -90,68 +87,41 @@ def get_detailed_abstract(entry):
             {"role": "user", "content": f"请处理：{base_data['original_title']}"}
         ]
 
-        finish_reason = None
-        final_data = {}
+        # 调用通义千问API进行联网搜索获取信息
+        completion = CLIENT.chat.completions.create(
+            model="qwen-plus",  # 通义千问模型
+            messages=messages,
+            temperature=0.3,
+            response_format={"type": "json_object"},
+            extra_body={
+                "enable_search": True  # 启用联网搜索
+            }
+        )
 
-        # 多轮对话处理（符合官方模板）
-        while finish_reason is None or finish_reason == "tool_calls":
-            completion = CLIENT.chat.completions.create(
-                model="moonshot-v1-128k",
-                messages=messages,
-                temperature=0.3,
-                response_format={"type": "json_object"},
-                tools=[{
-                    "type": "builtin_function",
-                    "function": {"name": "$web_search"}
-                }]
-            )
-
-            choice = completion.choices[0]
-            finish_reason = choice.finish_reason
-
-            # 工具调用处理（严格遵循官方示例）
-            if finish_reason == "tool_calls":
-                messages.append(choice.message)
-                for tool_call in choice.message.tool_calls:
-                    if tool_call.function.name == "$web_search":
-                        args = json.loads(tool_call.function.arguments)
-
-                        # 打印token消耗（新增）
-                        search_tokens = args.get("usage", {}).get("total_tokens", 0)
-                        print(f"搜索消耗tokens: {search_tokens}")
-
-                        tool_result = search_impl(args)
-                        messages.append({
-                            "role": "tool",
-                            "tool_call_id": tool_call.id,
-                            "name": "$web_search",
-                            "content": json.dumps(tool_result)
-                        })
-            else:
-                # 解析结构化响应
-                try:
-                    response = choice.message.content
-                    # 添加安全的JSON解析
-                    api_data = json.loads(response)
-                    
-                    # 合并数据（优先使用API数据，保留基础元数据）
-                    return {
-                        **base_data,  # 基础字段
-                        'translated_title': api_data.get('translated_title', base_data['original_title']),
-                        'translated_authors': api_data.get('translated_authors', base_data['original_authors']),
-                        'abstract': api_data.get('abstract', '摘要获取失败'),
-                        'summary': api_data.get('summary', '总结生成失败')
-                    }
-                except Exception as e:
-                    print(f"处理失败: {str(e)}")
-                    # 返回基础数据+错误信息
-                    return {
-                        **base_data,
-                        'translated_title': base_data['original_title'],
-                        'translated_authors': base_data['original_authors'],
-                        'abstract': '内容处理异常',
-                        'summary': '内容处理异常'
-                    }
+        # 解析结构化响应
+        try:
+            response = completion.choices[0].message.content
+            # 添加安全的JSON解析
+            api_data = json.loads(response)  # 不需要指定encoding
+            
+            # 合并数据（优先使用API数据，保留基础元数据）
+            return {
+                **base_data,  # 基础字段
+                'translated_title': api_data.get('translated_title', base_data['original_title']),
+                'translated_authors': api_data.get('translated_authors', base_data['original_authors']),
+                'abstract': api_data.get('abstract', '摘要获取失败'),
+                'summary': api_data.get('summary', '总结生成失败')
+            }
+        except Exception as e:
+            print(f"处理失败: {str(e)}")
+            # 返回基础数据+错误信息
+            return {
+                **base_data,
+                'translated_title': base_data['original_title'],
+                'translated_authors': base_data['original_authors'],
+                'abstract': '内容处理异常',
+                'summary': '内容处理异常'
+            }
 
     except Exception as e:
         print(f"⚠️ 全局异常: {str(e)}")
@@ -191,7 +161,7 @@ def classify_article_fields(article_data: dict) -> Dict[str, float]:
 
     try:
         completion = CLIENT.chat.completions.create(
-            model="moonshot-v1-8k",
+            model="qwen-plus",
             messages=[
                 {"role": "system", "content": system_prompt},
                 {"role": "user", "content": "请分析这篇论文属于哪些领域"}
@@ -229,19 +199,13 @@ def save_to_database(df):
     # 过滤非法字段
     df = df[[col for col in df.columns if col in valid_columns]]
     
-    # 必要字段检查
-    required_fields = {
-        'journal': '未知期刊',
-        'link': '无链接',
-        'publish_date': datetime.now().strftime('%Y-%m-%d')
-    }
-    
     try:
-        conn = sqlite3.connect('journals.db')
+        conn = get_db_connection()
         cursor = conn.cursor()
         
         # 获取当前记录数
-        original_count = pd.read_sql_query("SELECT COUNT(*) FROM articles", conn).iloc[0,0]
+        cursor.execute("SELECT COUNT(*) FROM articles")
+        original_count = cursor.fetchone()[0]
         
         # 保存文章并获取新增文章的ID
         new_article_ids = []
@@ -249,11 +213,11 @@ def save_to_database(df):
         for _, row in df.iterrows():
             # 准备插入数据
             columns = ', '.join(row.index)
-            placeholders = ', '.join(['?'] * len(row))
+            placeholders = ', '.join(['%s'] * len(row))
             
             # 执行插入
             cursor.execute(f"""
-                INSERT OR IGNORE INTO articles 
+                INSERT IGNORE INTO articles 
                 ({columns}) 
                 VALUES ({placeholders})
             """, tuple(row))
@@ -266,7 +230,8 @@ def save_to_database(df):
         conn.commit()
         
         # 获取保存后的记录数
-        new_count = pd.read_sql_query("SELECT COUNT(*) FROM articles", conn).iloc[0,0]
+        cursor.execute("SELECT COUNT(*) FROM articles")
+        new_count = cursor.fetchone()[0]
         added = new_count - original_count
         skipped = len(df) - added
         
@@ -280,19 +245,44 @@ def save_to_database(df):
             # 保存领域分类结果
             for field, confidence in field_results.items():
                 cursor.execute("""
-                    INSERT OR REPLACE INTO article_fields 
+                    INSERT INTO article_fields 
                     (article_id, field, confidence) 
-                    VALUES (?, ?, ?)
+                    VALUES (%s, %s, %s)
+                    ON DUPLICATE KEY UPDATE confidence = VALUES(confidence)
                 """, (article_id, field, confidence))
             
             conn.commit()
             print(f"✅ 已保存 {len(field_results)} 个领域分类结果")
+            
+            # 如果启用了逻辑关系图功能，为新文章生成逻辑关系图
+            if LOGIC_GRAPH_ENABLED:
+                if article_data.get('abstract') and article_data.get('abstract') not in ['摘要获取失败', '内容处理异常']:
+                    print(f"🔄 为文章ID {article_id}「{article_data.get('translated_title', '')[:20]}...」生成逻辑关系图...")
+                    try:
+                        start_time = time.time()
+                        result = process_article_logic_graph(article_id)
+                        elapsed = time.time() - start_time
+                        
+                        if result:
+                            print(f"✅ 逻辑关系图生成成功 (耗时: {elapsed:.1f}秒)")
+                            # 显示生成的mermaid代码长度作为参考
+                            mermaid_length = len(result.get('mermaid_code', ''))
+                            print(f"   mermaid代码长度: {mermaid_length} 字符")
+                        else:
+                            print(f"⚠️ 逻辑关系图生成失败 (耗时: {elapsed:.1f}秒)")
+                    except Exception as e:
+                        print(f"❌ 逻辑关系图处理异常: {str(e)}")
+                else:
+                    print(f"⏩ 文章ID {article_id} 摘要不可用，跳过逻辑关系图生成")
+            
+            print(f"✓ 文章ID {article_id} 处理完成\n{'='*50}")
         
     except Exception as e:
         print(f"❌ 保存到数据库失败: {str(e)}")
         raise
     finally:
-        if 'conn' in locals():
+        if 'conn' in locals() and conn.is_connected():
+            cursor.close()
             conn.close()
 
 def article_exists(link: str, entry) -> bool:
@@ -300,14 +290,16 @@ def article_exists(link: str, entry) -> bool:
     if not link or link == '无链接':
         return False
         
-    conn = sqlite3.connect('journals.db')
-    query = "SELECT 1 FROM articles WHERE link = ? OR (journal = ? AND original_title = ?) LIMIT 1"
-    params = (link, 
-             getattr(entry, 'journal', '未知期刊'),  # 安全获取属性
-             getattr(entry, 'title', '无标题'))
-    result = pd.read_sql_query(query, conn, params=params)
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    cursor.execute(
+        "SELECT 1 FROM articles WHERE link = %s OR (journal = %s AND original_title = %s) LIMIT 1",
+        (link, getattr(entry, 'journal', '未知期刊'), getattr(entry, 'title', '无标题'))
+    )
+    result = cursor.fetchone()
+    cursor.close()
     conn.close()
-    return not result.empty
+    return result is not None
 
 def get_rss_articles(articles_num=3):
     """获取并处理期刊文章（增强日志输出）"""
@@ -415,13 +407,14 @@ def is_related_to_field(article_data: dict, target_field: str) -> bool:
         return legacy_is_related_to_field(article_data, target_field)
     
     # 从数据库查询
-    conn = sqlite3.connect('journals.db')
+    conn = get_db_connection()
     cursor = conn.cursor()
     cursor.execute("""
         SELECT confidence FROM article_fields 
-        WHERE article_id = ? AND field = ?
+        WHERE article_id = %s AND field = %s
     """, (article_id, target_field))
     result = cursor.fetchone()
+    cursor.close()
     conn.close()
     
     if result:
@@ -437,10 +430,11 @@ def get_article_id(link: str) -> int:
     if not link:
         return None
         
-    conn = sqlite3.connect('journals.db')
+    conn = get_db_connection()
     cursor = conn.cursor()
-    cursor.execute("SELECT id FROM articles WHERE link = ?", (link,))
+    cursor.execute("SELECT id FROM articles WHERE link = %s", (link,))
     result = cursor.fetchone()
+    cursor.close()
     conn.close()
     
     return result[0] if result else None
@@ -464,7 +458,7 @@ def legacy_is_related_to_field(article_data: dict, target_field: str) -> bool:
 
     try:
         completion = CLIENT.chat.completions.create(
-            model="moonshot-v1-8k",
+            model="qwen-plus",
             messages=[
                 {"role": "system", "content": system_prompt},
                 {"role": "user", "content": "请判断这篇论文是否属于目标领域"}
@@ -480,10 +474,51 @@ def legacy_is_related_to_field(article_data: dict, target_field: str) -> bool:
         print(f"⚠️ 判断失败: {str(e)}")
         return False  # 失败时默认保留
 
+def check_database_exists():
+    """检查云端数据库是否存在"""
+    try:
+        conn = get_db_connection()  # 使用你之前定义的获取数据库连接的函数
+        cursor = conn.cursor()
+        
+        # 检查数据库是否存在
+        cursor.execute("SHOW DATABASES LIKE 'academic_pulse';")
+        result = cursor.fetchone()
+        print(result)
+        if result:
+            print("✅ 数据库 'academic_pulse' 已存在。")
+        else:
+            print("❌ 数据库 'academic_pulse' 不存在，正在初始化...")
+            init_database()  # 调用初始化函数创建数据库和表结构
+        return(result)
+
+    except Error as e:
+        print(f"❌ 数据库连接失败: {e}")
+    finally:
+        if 'conn' in locals() and conn.is_connected():
+            cursor.close()
+            conn.close()
+
 if __name__ == "__main__":
+
+    check_database_exists()  # 检查云端数据库
     # 确保数据库存在
-    if not os.path.exists('journals.db'):
-        init_database()
+
+    # 导入逻辑关系图生成模块
+    try:
+        from generate_logic_graph import process_article_logic_graph, ensure_logic_graph_table_exists
+
+        LOGIC_GRAPH_ENABLED = True
+        print("✅ 逻辑关系图模块已加载，将自动为新文章生成逻辑关系图")
+    except ImportError:
+        print("⚠️ 逻辑关系图模块导入失败，将不生成逻辑关系图")
+        LOGIC_GRAPH_ENABLED = False
+
+    # 如果启用了逻辑关系图功能，确保相关表存在
+    if LOGIC_GRAPH_ENABLED:
+        print("🔄 确保逻辑关系图表结构存在...")
+        ensure_logic_graph_table_exists()
+        
     # 只执行抓取和保存
+    print("\n🚀 开始抓取期刊文章并生成逻辑关系图...")
     get_rss_articles()
-    print("✅ 数据抓取和保存完成")
+    print("✅ 数据抓取、保存和逻辑关系图生成 全部完成")

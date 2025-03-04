@@ -1,9 +1,9 @@
 import os
 import json
-import sqlite3
 from typing import Dict, Any, Tuple, Optional
 from datetime import datetime
 from openai import OpenAI
+from config import get_db_connection
 
 # 使用环境变量存储API密钥或直接在代码中设置
 DASHSCOPE_API_KEY = "sk-dc79c7928859459c9619daf752c542fc"
@@ -37,8 +37,8 @@ def generate_logic_graph(title: str, abstract: str) -> Tuple[str, str, str]:
 请完成以下任务：
 1. 分析文章中的关键概念、实体及其关系
 2. 使用mermaid语法创建一个逻辑关系图（流程图或思维导图格式）
-3. 将生成的图转化回文字，并与原摘要对比，确保逻辑不错（可以缺少一些信息，但逻辑必须正确）
-4. 只输出最终的mermaid代码
+3. 在思维链中将生成的图转化回文字，并与原摘要对比，确保逻辑不错（可以缺少一些信息，但逻辑必须正确），如不正确，则再次生成逻辑关系图
+4. 最终只输出的mermaid代码，不要输出其他任何无关的文字
 
 mermaid代码应该清晰展示出论文的主要概念和它们之间的关系，便于理解论文的核心内容。"""
     
@@ -51,8 +51,11 @@ mermaid代码应该清晰展示出论文的主要概念和它们之间的关系�
 
         # 获取思维链和最终答案
         reasoning = completion.choices[0].message.reasoning_content  # 思维过程
+        print("思维链：", reasoning)
         mermaid_code = completion.choices[0].message.content  # 最终结果
-        
+        print("mermaid代码：", mermaid_code)
+        # 清理mermaid代码
+        mermaid_code = clean_mermaid_code(mermaid_code)
         # 从reasoning中提取文字验证部分（最后一个部分通常是验证）
         text_verification = extract_verification_from_reasoning(reasoning)
         
@@ -85,27 +88,14 @@ def extract_verification_from_reasoning(reasoning: str) -> str:
     return '\n'.join(third_part)
 
 def save_logic_graph_to_db(article_id: int, mermaid_code: str, reasoning: str, verification: str) -> bool:
-    """保存生成的逻辑关系图到数据库
-    
-    Args:
-        article_id: 文章ID
-        mermaid_code: 生成的mermaid代码
-        reasoning: 思维链过程
-        verification: 文字验证
-        
-    Returns:
-        bool: 是否保存成功
-    """
-    # 确保数据库中有存储逻辑图的表
-    ensure_logic_graph_table_exists()
-    
+    """保存生成的逻辑关系图到数据库"""
     try:
-        conn = sqlite3.connect('journals.db')
+        conn = get_db_connection()
         cursor = conn.cursor()
         
         # 检查是否已存在
         cursor.execute(
-            "SELECT 1 FROM article_logic_graphs WHERE article_id = ?", 
+            "SELECT 1 FROM article_logic_graphs WHERE article_id = %s", 
             (article_id,)
         )
         
@@ -113,15 +103,15 @@ def save_logic_graph_to_db(article_id: int, mermaid_code: str, reasoning: str, v
             # 更新现有记录
             cursor.execute("""
                 UPDATE article_logic_graphs
-                SET mermaid_code = ?, reasoning = ?, verification = ?, updated_at = ?
-                WHERE article_id = ?
+                SET mermaid_code = %s, reasoning = %s, verification = %s, updated_at = %s
+                WHERE article_id = %s
             """, (mermaid_code, reasoning, verification, datetime.now().isoformat(), article_id))
         else:
             # 插入新记录
             cursor.execute("""
                 INSERT INTO article_logic_graphs
                 (article_id, mermaid_code, reasoning, verification, created_at, updated_at)
-                VALUES (?, ?, ?, ?, ?, ?)
+                VALUES (%s, %s, %s, %s, %s, %s)
             """, (article_id, mermaid_code, reasoning, verification, 
                   datetime.now().isoformat(), datetime.now().isoformat()))
         
@@ -133,61 +123,57 @@ def save_logic_graph_to_db(article_id: int, mermaid_code: str, reasoning: str, v
         print(f"❌ 保存逻辑关系图失败: {str(e)}")
         return False
     finally:
-        if 'conn' in locals():
+        if 'conn' in locals() and conn.is_connected():
+            cursor.close()
             conn.close()
 
 def ensure_logic_graph_table_exists():
     """确保article_logic_graphs表存在"""
-    conn = sqlite3.connect('journals.db')
+    conn = get_db_connection()
     cursor = conn.cursor()
     
     # 创建存储逻辑图的表
     cursor.execute('''
     CREATE TABLE IF NOT EXISTS article_logic_graphs (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        article_id INTEGER UNIQUE,
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        article_id INT UNIQUE,
         mermaid_code TEXT,
         reasoning TEXT,
         verification TEXT,
-        created_at TEXT,
-        updated_at TEXT,
-        FOREIGN KEY (article_id) REFERENCES articles(id)
-    )
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+        FOREIGN KEY (article_id) REFERENCES articles(id),
+        INDEX idx_logic_graphs_article (article_id)
+    ) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci
     ''')
     
-    # 创建索引
-    cursor.execute('CREATE INDEX IF NOT EXISTS idx_logic_graphs_article ON article_logic_graphs (article_id)')
-    
     conn.commit()
+    cursor.close()
     conn.close()
 
 def process_article_logic_graph(article_id: int) -> Optional[Dict[str, Any]]:
-    """为特定文章生成逻辑关系图
-    
-    Args:
-        article_id: 文章ID
-        
-    Returns:
-        Optional[Dict[str, Any]]: 包含处理结果的字典，失败则返回None
-    """
+    """为特定文章生成逻辑关系图"""
     try:
         # 获取文章信息
-        conn = sqlite3.connect('journals.db')
-        cursor = conn.cursor()
+        conn = get_db_connection()
+        cursor = conn.cursor(dictionary=True)
         cursor.execute("""
             SELECT original_title, translated_title, abstract
             FROM articles
-            WHERE id = ?
+            WHERE id = %s
         """, (article_id,))
         
         result = cursor.fetchone()
+        cursor.close()
         conn.close()
         
         if not result:
             print(f"❌ 未找到ID为 {article_id} 的文章")
             return None
             
-        original_title, translated_title, abstract = result
+        original_title = result['original_title']
+        translated_title = result['translated_title']
+        abstract = result['abstract']
         
         # 使用中文标题和摘要优先
         title = translated_title or original_title
@@ -219,17 +205,10 @@ def process_article_logic_graph(article_id: int) -> Optional[Dict[str, Any]]:
         return None
 
 def get_article_logic_graph(article_id: int) -> Optional[Dict[str, Any]]:
-    """获取文章的逻辑关系图
-    
-    Args:
-        article_id: 文章ID
-        
-    Returns:
-        Optional[Dict[str, Any]]: 包含逻辑图信息的字典，若不存在则返回None
-    """
+    """获取文章的逻辑关系图"""
     try:
-        conn = sqlite3.connect('journals.db')
-        cursor = conn.cursor()
+        conn = get_db_connection()
+        cursor = conn.cursor(dictionary=True)
         
         # 检查逻辑图是否存在
         cursor.execute("""
@@ -237,21 +216,21 @@ def get_article_logic_graph(article_id: int) -> Optional[Dict[str, Any]]:
                    a.translated_title, a.original_title, a.abstract
             FROM article_logic_graphs alg
             JOIN articles a ON alg.article_id = a.id
-            WHERE alg.article_id = ?
+            WHERE alg.article_id = %s
         """, (article_id,))
         
         result = cursor.fetchone()
+        cursor.close()
         conn.close()
         
         if result:
-            mermaid_code, verification, reasoning, translated_title, original_title, abstract = result
             return {
                 'article_id': article_id,
-                'title': translated_title or original_title,
-                'abstract': abstract,
-                'mermaid_code': mermaid_code,
-                'verification': verification,
-                'reasoning': reasoning
+                'title': result['translated_title'] or result['original_title'],
+                'abstract': result['abstract'],
+                'mermaid_code': result['mermaid_code'],
+                'verification': result['verification'],
+                'reasoning': result['reasoning']
             }
         else:
             # 不存在，则生成新的
@@ -262,18 +241,14 @@ def get_article_logic_graph(article_id: int) -> Optional[Dict[str, Any]]:
         return None
 
 def process_recent_articles(limit: int = 10):
-    """为最近的文章生成逻辑关系图
-    
-    Args:
-        limit: 处理的文章数量限制
-    """
+    """为最近的文章生成逻辑关系图"""
     try:
         # 确保表结构存在
         ensure_logic_graph_table_exists()
         
         # 获取最近的没有逻辑图的文章
-        conn = sqlite3.connect('journals.db')
-        cursor = conn.cursor()
+        conn = get_db_connection()
+        cursor = conn.cursor(dictionary=True)
         
         # 查询没有逻辑图的最新文章
         cursor.execute("""
@@ -285,10 +260,11 @@ def process_recent_articles(limit: int = 10):
             AND a.abstract != '摘要获取失败'
             AND a.abstract != '内容处理异常'
             ORDER BY a.id DESC
-            LIMIT ?
+            LIMIT %s
         """, (limit,))
         
         articles = cursor.fetchall()
+        cursor.close()
         conn.close()
         
         if not articles:
@@ -298,8 +274,9 @@ def process_recent_articles(limit: int = 10):
         print(f"🔍 找到 {len(articles)} 篇需要生成逻辑关系图的文章")
         
         # 为每篇文章生成逻辑关系图
-        for article_id, translated_title, original_title in articles:
-            title = translated_title or original_title
+        for article in articles:
+            article_id = article['id']
+            title = article['translated_title'] or article['original_title']
             print(f"\n处理文章 #{article_id}: {title[:30]}...")
             result = process_article_logic_graph(article_id)
             if result:
@@ -309,6 +286,28 @@ def process_recent_articles(limit: int = 10):
                 
     except Exception as e:
         print(f"❌ 批量处理文章失败: {str(e)}")
+
+def clean_mermaid_code(mermaid_code: str) -> str:
+    """清理mermaid代码，移除markdown代码块标记
+    
+    Args:
+        mermaid_code: 原始mermaid代码
+        
+    Returns:
+        str: 清理后的纯mermaid代码
+    """
+    # 移除开头的```mermaid标记
+    if mermaid_code.strip().startswith("```mermaid"):
+        mermaid_code = mermaid_code.replace("```mermaid", "", 1).strip()
+    # 如果包含结尾的```，也移除
+    if mermaid_code.strip().endswith("```"):
+        mermaid_code = mermaid_code[:mermaid_code.rfind("```")].strip()
+    # 移除任何可能的其他```mermaid标记
+    mermaid_code = mermaid_code.replace("```mermaid", "").strip()
+    # 移除单独的```标记
+    mermaid_code = mermaid_code.replace("```", "").strip()
+    
+    return mermaid_code
 
 if __name__ == "__main__":
     # 确保表结构存在

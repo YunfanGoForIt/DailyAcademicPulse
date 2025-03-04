@@ -3,9 +3,11 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>学术期刊推送</title>
+    <title>学术推送</title>
     <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
     <link href="styles.css" rel="stylesheet">
+    <!-- 引入mermaid.js用于渲染逻辑关系图 -->
+    <script src="https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js"></script>
     <style>
         .abstract {
             display: -webkit-box;
@@ -16,8 +18,28 @@
         .paper-card {
             transition: all 0.3s ease;
         }
-        .paper-card:hover {
+        /* 移除悬停时的颜色变化效果 */
+        /* .paper-card:hover {
             transform: translateY(-5px);
+        } */
+        /* 逻辑关系图样式 */
+        .mermaid-container {
+            background-color: white;
+            padding: 20px;
+            border-radius: 8px;
+        }
+        .logic-graph-badge {
+            display: inline-block;
+            padding: 0.25rem 0.5rem;
+            font-size: 0.75rem;
+            font-weight: 600;
+            border-radius: 0.25rem;
+            background-color: #E0F2FE;
+            color: #0369A1;
+        }
+        .tab-active {
+            border-bottom: 2px solid #3b82f6;
+            color: #3b82f6;
         }
     </style>
 </head>
@@ -106,6 +128,133 @@
             <p class="text-gray-400 mt-2">请尝试更改筛选条件或时间范围</p>
         </div>
     </main>
+
+    <!-- 论文详情模态框 -->
+    <div id="paperModal" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center hidden z-50">
+        <div class="bg-white rounded-lg shadow-xl w-full max-w-4xl max-h-[90vh] overflow-y-auto">
+            <!-- 模态框关闭按钮 -->
+            <div class="flex justify-between items-center p-6 border-b">
+                <h2 id="modalTitle" class="text-2xl font-bold text-gray-900"></h2>
+                <button id="closeModal" class="text-gray-400 hover:text-gray-500">
+                    <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path>
+                    </svg>
+                </button>
+            </div>
+            
+            <!-- 模态框内容 -->
+            <div class="p-6">
+                <!-- 标签页按钮 -->
+                <div class="flex border-b mb-4">
+                    <button id="tabAbstract" class="px-4 py-2 font-medium tab-active">摘要</button>
+                    <button id="tabLogicGraph" class="px-4 py-2 font-medium">逻辑关系图</button>
+                </div>
+                
+                <!-- 摘要内容 -->
+                <div id="abstractContent" class="space-y-4">
+                    <p id="modalAuthors" class="text-gray-600"></p>
+                    <p id="modalJournal" class="text-gray-600"></p>
+                    <p id="modalDate" class="text-gray-600"></p>
+                    <p id="modalAbstract" class="text-gray-800 mt-4"></p>
+                    <div class="flex space-x-2 mt-4 flex-wrap gap-2">
+                        <span class="text-gray-700">领域：</span>
+                        <div id="modalFields" class="flex flex-wrap gap-1"></div>
+                    </div>
+                    <div class="flex justify-between items-center mt-6">
+                        <a id="modalLink" href="#" target="_blank" class="px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600">查看原文</a>
+                        <button id="modalFavoriteBtn" class="px-4 py-2 rounded-lg border border-blue-500 text-blue-500 hover:bg-blue-50 flex items-center">
+                            <svg class="w-5 h-5 mr-1" fill="currentColor" viewBox="0 0 20 20">
+                                <path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 00.95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.8 2.034a1 1 0 00-.364 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.8-2.034a1 1 0 00-1.175 0l-2.8 2.034c-.784.57-1.838-.197-1.539-1.118l1.07-3.292a1 1 0 00-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81h3.461a1 1 0 00.951-.69l1.07-3.292z"></path>
+                            </svg>
+                            收藏
+                        </button>
+                    </div>
+                </div>
+                
+                <!-- 逻辑关系图内容 -->
+                <div id="logicGraphContent" class="space-y-4 hidden">
+                    <div id="logicGraphStatus" class="mb-4">
+                        <div id="logicGraphLoading" class="text-center py-8 hidden">
+                            <svg class="animate-spin h-8 w-8 text-blue-500 mx-auto" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                                <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                                <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                            </svg>
+                            <p class="mt-2 text-gray-600">正在加载逻辑关系图...</p>
+                        </div>
+                        <div id="logicGraphNotAvailable" class="text-center py-8 hidden">
+                            <svg class="h-12 w-12 text-gray-400 mx-auto" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z"></path>
+                            </svg>
+                            <p class="mt-2 text-gray-600">该文章暂无逻辑关系图</p>
+                            <button id="generateLogicGraphBtn" class="mt-4 px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600">
+                                生成逻辑关系图
+                            </button>
+                        </div>
+                        <div id="logicGraphError" class="text-center py-8 hidden">
+                            <svg class="h-12 w-12 text-red-400 mx-auto" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+                            </svg>
+                            <p class="mt-2 text-gray-600" id="logicGraphErrorMsg">加载失败，请稍后重试</p>
+                            <button id="retryLogicGraphBtn" class="mt-4 px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600">
+                                重试
+                            </button>
+                        </div>
+                    </div>
+                    
+                    <div id="mermaidGraph" class="mermaid-container hidden"></div>
+                    
+                    <div id="logicGraphVerification" class="mt-6 hidden">
+                        <h3 class="text-lg font-medium text-gray-900 mb-2">文字验证</h3>
+                        <p id="verificationText" class="text-gray-700 bg-gray-50 p-4 rounded"></p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 逻辑关系图查看模态框 -->
+    <div id="logicGraphModal" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center hidden z-50">
+        <div class="bg-white rounded-lg shadow-xl w-full max-w-5xl max-h-[90vh] flex flex-col">
+            <!-- 模态框标题栏 -->
+            <div class="flex justify-between items-center p-4 border-b">
+                <h2 id="logicGraphModalTitle" class="text-xl font-bold text-gray-900 truncate"></h2>
+                <button id="closeLogicGraphModal" class="text-gray-400 hover:text-gray-500">
+                    <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path>
+                    </svg>
+                </button>
+            </div>
+            
+            <!-- 模态框内容 -->
+            <div class="flex flex-col md:flex-row p-0 overflow-hidden flex-grow">
+                <!-- 左侧：摘要 -->
+                <div class="w-full md:w-1/3 p-4 overflow-y-auto border-r border-gray-200">
+                    <h3 class="text-lg font-medium mb-4">文章摘要</h3>
+                    <p id="logicGraphModalAbstract" class="text-gray-700"></p>
+                </div>
+                
+                <!-- 右侧：逻辑关系图 -->
+                <div class="w-full md:w-2/3 p-4 overflow-y-auto">
+                    <div id="logicGraphModalContent" class="mermaid-container bg-white p-4 rounded-lg">
+                        <div class="text-center py-8">
+                            <svg class="animate-spin h-8 w-8 text-blue-500 mx-auto" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                                <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                                <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                            </svg>
+                            <p class="mt-2 text-gray-600">正在加载逻辑关系图...</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- 底部按钮区 -->
+            <div class="p-4 border-t flex justify-end">
+                <button id="logicGraphModalClose" class="px-4 py-2 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300">
+                    关闭
+                </button>
+            </div>
+        </div>
+    </div>
 
     <script>
         // 全局变量
@@ -304,7 +453,7 @@
                 document.getElementById('noResults').classList.add('hidden');
                 
                 document.getElementById('papersContainer').innerHTML = papers.map(paper => `
-                    <div class="paper-card bg-white rounded-lg shadow-md hover:shadow-xl transition-shadow duration-300">
+                    <div class="paper-card bg-white rounded-lg shadow-md hover:shadow-xl transition-shadow duration-300" data-id="${paper.id}">
                         <div class="p-6">
                             <div class="flex justify-between items-start mb-4">
                                 <h3 class="text-xl font-semibold text-gray-900 hover:text-blue-600">
@@ -320,6 +469,35 @@
                             </div>
                             <p class="text-gray-600 text-sm mb-4">作者：${paper.authors.join(', ')}</p>
                             <p class="text-gray-700 mb-4">${paper.abstract || paper.summary || '无摘要'}</p>
+                            
+                            <!-- 逻辑关系图区域 -->
+                            ${paper.hasLogicGraph ? `
+                            <div class="logic-graph-area mt-4 mb-4">
+                                <div class="flex justify-between items-center mb-2">
+                                    <h4 class="text-md font-medium text-gray-800">逻辑关系图</h4>
+                                    <span class="logic-graph-badge">逻辑图</span>
+                                </div>
+                                <div class="mermaid-thumbnail bg-gray-50 p-3 rounded-lg cursor-pointer overflow-hidden" 
+                                     style="height: 150px;" 
+                                     id="mermaid-thumb-${paper.id}" 
+                                     onclick="openLogicGraphModal(${paper.id}, '${encodeURIComponent(paper.title)}', '${encodeURIComponent(paper.abstract || paper.summary || '无摘要')}')">
+                                    <div class="text-center py-2">
+                                        <svg class="animate-spin h-5 w-5 text-blue-500 mx-auto" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                                            <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                                            <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                                        </svg>
+                                        <p class="text-sm text-gray-500">加载中...</p>
+                                    </div>
+                                </div>
+                                <div class="text-center mt-2">
+                                    <button class="text-blue-500 text-sm hover:underline" 
+                                            onclick="openLogicGraphModal(${paper.id}, '${encodeURIComponent(paper.title)}', '${encodeURIComponent(paper.abstract || paper.summary || '无摘要')}')">
+                                        点击查看完整图表
+                                    </button>
+                                </div>
+                            </div>
+                            ` : ''}
+
                             <div class="flex flex-wrap justify-between items-center">
                                 <div class="flex flex-wrap gap-2 mb-2">
                                     ${paper.fields.map(field => `
@@ -337,6 +515,13 @@
                         </div>
                     </div>
                 `).join('');
+                
+                // 为有逻辑关系图的文章加载图表
+                papers.forEach(paper => {
+                    if (paper.hasLogicGraph) {
+                        loadCardLogicGraph(paper.id);
+                    }
+                });
             }
         }
 
@@ -455,6 +640,345 @@
                 updateFavoritesButtonStyle();
                 filterPapers('all');
             });
+        });
+
+        // 初始化mermaid
+        mermaid.initialize({ 
+            startOnLoad: false,
+            theme: 'default',
+            securityLevel: 'loose'
+        });
+        
+        // 当前选中的文章ID
+        let currentPaperId = null;
+        
+        // 标签页切换
+        document.getElementById('tabAbstract').addEventListener('click', function() {
+            this.classList.add('tab-active');
+            document.getElementById('tabLogicGraph').classList.remove('tab-active');
+            document.getElementById('abstractContent').classList.remove('hidden');
+            document.getElementById('logicGraphContent').classList.add('hidden');
+        });
+        
+        document.getElementById('tabLogicGraph').addEventListener('click', function() {
+            this.classList.add('tab-active');
+            document.getElementById('tabAbstract').classList.remove('tab-active');
+            document.getElementById('abstractContent').classList.add('hidden');
+            document.getElementById('logicGraphContent').classList.remove('hidden');
+            
+            // 加载逻辑关系图
+            if (currentPaperId) {
+                loadLogicGraph(currentPaperId);
+            }
+        });
+        
+        // 生成逻辑关系图按钮
+        document.getElementById('generateLogicGraphBtn').addEventListener('click', function() {
+            if (currentPaperId) {
+                generateLogicGraph(currentPaperId);
+            }
+        });
+        
+        // 重试加载逻辑关系图按钮
+        document.getElementById('retryLogicGraphBtn').addEventListener('click', function() {
+            if (currentPaperId) {
+                loadLogicGraph(currentPaperId);
+            }
+        });
+        
+        // 加载逻辑关系图函数
+        async function loadLogicGraph(paperId) {
+            resetLogicGraphStatus('loading');
+            
+            try {
+                const response = await fetch(`/api/paper/logic-graph/${paperId}`);
+                
+                if (!response.ok) {
+                    if (response.status === 404) {
+                        // 逻辑关系图不存在
+                        resetLogicGraphStatus('notAvailable');
+                        return;
+                    }
+                    throw new Error(`HTTP error! status: ${response.status}`);
+                }
+                
+                const data = await response.json();
+                
+                // 显示mermaid图
+                const mermaidContainer = document.getElementById('mermaidGraph');
+                mermaidContainer.innerHTML = data.mermaid_code;
+                mermaidContainer.classList.remove('hidden');
+                
+                // 重新渲染mermaid图
+                mermaid.render('mermaid-svg', data.mermaid_code).then(result => {
+                    mermaidContainer.innerHTML = result.svg;
+                });
+                
+                // 显示验证文本
+                if (data.verification) {
+                    document.getElementById('verificationText').textContent = data.verification;
+                    document.getElementById('logicGraphVerification').classList.remove('hidden');
+                }
+                
+                // 隐藏加载状态
+                resetLogicGraphStatus();
+                
+            } catch (error) {
+                console.error('Error loading logic graph:', error);
+                document.getElementById('logicGraphErrorMsg').textContent = `加载失败: ${error.message}`;
+                resetLogicGraphStatus('error');
+            }
+        }
+        
+        // 生成逻辑关系图函数
+        async function generateLogicGraph(paperId) {
+            resetLogicGraphStatus('loading');
+            
+            try {
+                const response = await fetch(`/api/paper/generate-logic-graph/${paperId}`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    }
+                });
+                
+                if (!response.ok) {
+                    throw new Error(`HTTP error! status: ${response.status}`);
+                }
+                
+                const data = await response.json();
+                
+                // 显示mermaid图
+                const mermaidContainer = document.getElementById('mermaidGraph');
+                mermaidContainer.innerHTML = data.mermaid_code;
+                mermaidContainer.classList.remove('hidden');
+                
+                // 重新渲染mermaid图
+                mermaid.render('mermaid-svg', data.mermaid_code).then(result => {
+                    mermaidContainer.innerHTML = result.svg;
+                });
+                
+                // 显示验证文本
+                if (data.verification) {
+                    document.getElementById('verificationText').textContent = data.verification;
+                    document.getElementById('logicGraphVerification').classList.remove('hidden');
+                }
+                
+                // 更新文章列表中的hasLogicGraph属性
+                const paperCard = document.querySelector(`.paper-card[data-id="${paperId}"]`);
+                if (paperCard) {
+                    // 添加逻辑关系图标志
+                    if (!paperCard.querySelector('.logic-graph-badge')) {
+                        const badgeContainer = paperCard.querySelector('.paper-fields');
+                        if (badgeContainer) {
+                            const badge = document.createElement('span');
+                            badge.className = 'logic-graph-badge ml-2';
+                            badge.textContent = '逻辑图';
+                            badgeContainer.appendChild(badge);
+                        }
+                    }
+                }
+                
+                // 隐藏加载状态
+                resetLogicGraphStatus();
+                
+            } catch (error) {
+                console.error('Error generating logic graph:', error);
+                document.getElementById('logicGraphErrorMsg').textContent = `生成失败: ${error.message}`;
+                resetLogicGraphStatus('error');
+            }
+        }
+        
+        // 重置逻辑关系图状态
+        function resetLogicGraphStatus(status = null) {
+            const containers = [
+                'logicGraphLoading',
+                'logicGraphNotAvailable',
+                'logicGraphError',
+                'mermaidGraph',
+                'logicGraphVerification'
+            ];
+            
+            // 隐藏所有容器
+            containers.forEach(id => {
+                document.getElementById(id).classList.add('hidden');
+            });
+            
+            // 根据状态显示特定容器
+            switch (status) {
+                case 'loading':
+                    document.getElementById('logicGraphLoading').classList.remove('hidden');
+                    break;
+                case 'notAvailable':
+                    document.getElementById('logicGraphNotAvailable').classList.remove('hidden');
+                    break;
+                case 'error':
+                    document.getElementById('logicGraphError').classList.remove('hidden');
+                    break;
+            }
+        }
+        
+        // 为卡片加载逻辑关系图
+        async function loadCardLogicGraph(paperId) {
+            try {
+                const response = await fetch(`/api/paper/logic-graph/${paperId}`);
+                
+                if (!response.ok) {
+                    document.getElementById(`mermaid-thumb-${paperId}`).innerHTML = `
+                        <p class="text-sm text-gray-500 text-center">加载失败，请点击查看详情</p>
+                    `;
+                    return;
+                }
+                
+                const data = await response.json();
+                
+                // 获取mermaid容器
+                const mermaidContainer = document.getElementById(`mermaid-thumb-${paperId}`);
+                
+                // 清理mermaid代码，移除markdown代码块标记
+                const cleanedCode = cleanMermaidCode(data.mermaid_code);
+                
+                // 更新内容为mermaid代码
+                mermaidContainer.innerHTML = cleanedCode;
+                
+                // 重新渲染mermaid图
+                mermaid.render(`mermaid-svg-${paperId}`, cleanedCode).then(result => {
+                    mermaidContainer.innerHTML = result.svg;
+                    // 添加缩略图样式
+                    const svg = mermaidContainer.querySelector('svg');
+                    if (svg) {
+                        svg.style.maxHeight = '100%';
+                        svg.style.width = '100%';
+                        svg.style.overflow = 'hidden';
+                    }
+                    // 添加查看提示
+                    mermaidContainer.innerHTML += `
+                        <div class="absolute inset-0 flex items-center justify-center bg-black bg-opacity-0 hover:bg-opacity-30 transition-all duration-300">
+                            <span class="text-transparent hover:text-white font-medium">点击放大</span>
+                        </div>
+                    `;
+                }).catch(error => {
+                    console.error('渲染mermaid图失败:', error);
+                    mermaidContainer.innerHTML = `
+                        <p class="text-sm text-gray-500 text-center">图表渲染失败，请点击查看详情</p>
+                    `;
+                });
+                
+            } catch (error) {
+                console.error('加载逻辑关系图失败:', error);
+                document.getElementById(`mermaid-thumb-${paperId}`).innerHTML = `
+                    <p class="text-sm text-gray-500 text-center">加载失败，请点击查看详情</p>
+                `;
+            }
+        }
+
+        // 清理mermaid代码，移除markdown代码块标记
+        function cleanMermaidCode(code) {
+            // 移除```mermaid和```标记
+            code = code.replace(/```mermaid/g, '').replace(/```/g, '').trim();
+            
+            // 确保代码以合法的图表类型开始
+            if (!code.startsWith('graph') && 
+                !code.startsWith('flowchart') && 
+                !code.startsWith('sequenceDiagram') && 
+                !code.startsWith('classDiagram') && 
+                !code.startsWith('stateDiagram')) {
+                console.warn('Mermaid代码不包含有效的图表类型声明');
+                // 可以添加默认图表类型
+                if (code.includes('->') || code.includes('-->')) {
+                    code = 'graph TD\n' + code;
+                }
+            }
+            
+            return code;
+        }
+
+        // 打开逻辑关系图查看模态框
+        async function openLogicGraphModal(paperId, encodedTitle, encodedAbstract) {
+            // 阻止事件冒泡
+            event.stopPropagation();
+            
+            // 解码标题和摘要
+            const title = decodeURIComponent(encodedTitle);
+            const abstract = decodeURIComponent(encodedAbstract);
+            
+            // 设置标题和摘要
+            document.getElementById('logicGraphModalTitle').textContent = title;
+            document.getElementById('logicGraphModalAbstract').textContent = abstract;
+            
+            // 显示模态框
+            document.getElementById('logicGraphModal').classList.remove('hidden');
+            
+            // 加载逻辑关系图
+            try {
+                const response = await fetch(`/api/paper/logic-graph/${paperId}`);
+                
+                if (!response.ok) {
+                    document.getElementById('logicGraphModalContent').innerHTML = `
+                        <div class="text-center py-8">
+                            <svg class="h-12 w-12 text-red-400 mx-auto" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+                            </svg>
+                            <p class="mt-2 text-gray-600">加载失败，请稍后重试</p>
+                        </div>
+                    `;
+                    return;
+                }
+                
+                const data = await response.json();
+                
+                // 清理mermaid代码
+                const cleanedCode = cleanMermaidCode(data.mermaid_code);
+                
+                // 渲染mermaid图
+                document.getElementById('logicGraphModalContent').innerHTML = cleanedCode;
+                mermaid.render('modal-mermaid-svg', cleanedCode).then(result => {
+                    document.getElementById('logicGraphModalContent').innerHTML = result.svg;
+                    // 添加响应式样式
+                    const svg = document.getElementById('logicGraphModalContent').querySelector('svg');
+                    if (svg) {
+                        svg.style.width = '100%';
+                        svg.style.maxHeight = '600px';
+                    }
+                }).catch(error => {
+                    console.error('渲染模态框mermaid图失败:', error);
+                    document.getElementById('logicGraphModalContent').innerHTML = `
+                        <div class="text-center py-8">
+                            <svg class="h-12 w-12 text-red-400 mx-auto" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+                            </svg>
+                            <p class="mt-2 text-gray-600">图表渲染失败：${error.message}</p>
+                        </div>
+                    `;
+                });
+                
+            } catch (error) {
+                console.error('加载逻辑关系图失败:', error);
+                document.getElementById('logicGraphModalContent').innerHTML = `
+                    <div class="text-center py-8">
+                        <svg class="h-12 w-12 text-red-400 mx-auto" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+                        </svg>
+                        <p class="mt-2 text-gray-600">加载失败：${error.message}</p>
+                    </div>
+                `;
+            }
+        }
+        
+        // 关闭逻辑关系图模态框
+        document.getElementById('closeLogicGraphModal').addEventListener('click', function() {
+            document.getElementById('logicGraphModal').classList.add('hidden');
+        });
+        
+        document.getElementById('logicGraphModalClose').addEventListener('click', function() {
+            document.getElementById('logicGraphModal').classList.add('hidden');
+        });
+        
+        // 点击模态框背景关闭
+        document.getElementById('logicGraphModal').addEventListener('click', function(event) {
+            if (event.target === this) {
+                this.classList.add('hidden');
+            }
         });
     </script>
 </body>
