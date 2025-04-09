@@ -3,10 +3,10 @@
 """
 
 MYSQL_CONFIG = {
-    'host': 'rm-cn-em945q8cp000vvo.rwlb.rds.aliyuncs.com',
-    'user': 'yunfan',
-    'password': 'ILYcsr520!',
+    'host': '',
+    'user': '',
+    'password': '',
     'port': 3306,
-    'database': 'academic_pulse',  # 数据库名称
+    'database': '',  # 数据库名称
     'charset': 'utf8mb4'
 } 
