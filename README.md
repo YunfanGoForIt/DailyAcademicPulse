@@ -1,5 +1,4 @@
-我来为您综述这个项目：
-
+# Daily Academic Pulse
 这是一个名为"Daily Academic Pulse"的学术论文追踪和管理系统，主要功能包括：
 
 1. **论文抓取与处理** (`scrape_qwen_save_journal.py`):
