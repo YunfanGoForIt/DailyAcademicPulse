@@ -16,7 +16,7 @@ from config import FIELD_KEYWORDS, init_database
 
 # 配置信息
 CLIENT = OpenAI(
-    api_key="sk-mdOUhbhns3A8LgdlmFX6DNHeUGW0zSBJHsQooum7SQH5iTRE",
+    api_key="",
     base_url="https://api.moonshot.cn/v1",
 )
 
