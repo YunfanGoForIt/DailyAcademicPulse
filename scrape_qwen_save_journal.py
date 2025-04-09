@@ -23,7 +23,7 @@ from mysql.connector import Error
 
 # 配置信息
 CLIENT = OpenAI(
-    api_key="sk-dc79c7928859459c9619daf752c542fc",  # 请替换为你的实际API密钥
+    api_key="",  # 请替换为你的实际API密钥
     base_url="https://dashscope.aliyuncs.com/compatible-mode/v1",
 )
 
